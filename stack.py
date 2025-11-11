@@ -28,11 +28,11 @@ class Stack(CdkStack):
     NOTE:
       - Lambda code is expected in ./lambda_code/order_handler.py
       - index.html lives in ./web/index.html
-      - index.html fetches ./config.json to learn the API URL so you wont have to manually enter the API endpoint for the frontend
+      - index.html fetches ./config.json to learn the API URL
     """
 
     # Must change this - this will be the prefix to all allocated AWS resources for the project #
-    PROJECT_NAME = "mfox-test"
+    PROJECT_NAME = "online-order-tracking"
     ###############################################################################################
 
     def __init__(self, scope: Construct, construct_id: str, *, project_name: str = PROJECT_NAME, **kwargs) -> None:
@@ -41,8 +41,7 @@ class Stack(CdkStack):
         # 1) S3 static website 
         site_bucket = s3.Bucket(
             self,
-            "SiteBucket",
-            bucket_name=f"{project_name}-site-{CdkStack.of(self).account}".lower(),
+            "FrontendHostingBucket",
             website_index_document="index.html", # this was my temp frontend
             public_read_access=True,  
             block_public_access=s3.BlockPublicAccess.BLOCK_ACLS,
@@ -92,10 +91,9 @@ class Stack(CdkStack):
 
         order = api.root.add_resource("order")
         integration = apigw.LambdaIntegration(handler)
-        order.add_method("POST", integration)
-        order.add_method("GET", integration)
-
-        order_by_id = order.add_resource("{id}")
+        order.add_method("POST", integration) # POST /order
+        order.add_method("GET", integration) # GET /order
+        order_by_id = order.add_resource("{id}") # GET /order/{id}
         order_by_id.add_method("GET", integration)
 
         # 5) Deploy static site assets from ./web
@@ -103,7 +101,7 @@ class Stack(CdkStack):
             self,
             "DeployWebsite",
             destination_bucket=site_bucket,
-            sources=[s3deploy.Source.asset("web")],  # my index.html lived inside of a folder called "web/"
+            sources=[s3deploy.Source.asset("web")],
             destination_key_prefix="",
             prune=False,
             retain_on_delete=False,
