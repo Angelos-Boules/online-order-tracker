@@ -13,6 +13,9 @@ from aws_cdk import (
     aws_s3_deployment as s3deploy,
     aws_iam as iam,
     custom_resources as cr,
+    aws_cognito as cognito,
+    aws_cloudfront as cloudfront,
+    aws_cloudfront_origins as cforigins,
 )
 
 
@@ -31,26 +34,90 @@ class Stack(CdkStack):
       - index.html fetches ./config.json to learn the API URL
     """
 
-    # Must change this - this will be the prefix to all allocated AWS resources for the project #
-    PROJECT_NAME = "OrderTrackery"
+    PROJECT_NAME = "order-tracker"
     ###############################################################################################
 
     def __init__(self, scope: Construct, construct_id: str, *, project_name: str = PROJECT_NAME, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # 1) S3 static website 
+        # S3 static website storage
         site_bucket = s3.Bucket(
             self,
             "OrderTrackerFrontend",
             bucket_name=f"{project_name}-frontend",
-            website_index_document="index.html",
-            public_read_access=True,  
-            block_public_access=s3.BlockPublicAccess.BLOCK_ACLS,
+            public_read_access=False,  
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             auto_delete_objects=True,
             removal_policy=RemovalPolicy.DESTROY,
         )
 
-        # 2) DynamoDB (orders)
+        # Cloudfront to serve website with HTTPS
+        dist = cloudfront.Distribution(
+            self,
+            "OrderTrackingDistribution",
+            default_behavior=cloudfront.BehaviorOptions(
+                origin=cforigins.S3Origin(site_bucket),
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            ),
+            default_root_object="index.html",
+        )
+
+        # Cognito user pool
+        user_pool = cognito.UserPool(
+            self,
+            "UserPool",
+            user_pool_name=f"{project_name}-user-pool",
+            self_sign_up_enabled=True,
+            sign_in_aliases=cognito.SignInAliases(email=True),
+            standard_attributes=cognito.StandardAttributes(
+                email=cognito.StandardAttribute(required=True, mutable=False),
+            ),
+            password_policy=cognito.PasswordPolicy(
+                min_length=6,
+                require_lowercase=True,
+                require_uppercase=True,
+                require_digits=True,
+                require_symbols=True,
+            ),
+            account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
+        )
+
+        cognito.CfnUserPoolDomain(
+            self,
+            "UserPoolDomain",
+            domain=project_name,
+            user_pool_id=user_pool.user_pool_id,
+        )
+
+        # Client to authenticate users from pool
+        user_pool_client = cognito.UserPoolClient(
+            self,
+            "UserPoolClient",
+            user_pool=user_pool,
+            user_pool_client_name=f"{project_name}-client",
+            generate_secret=False,
+            auth_flows=cognito.AuthFlow(
+                user_password=True,
+                user_srp=True,
+            ),
+            o_auth=cognito.OAuthSettings(
+                flows=cognito.OAuthFlows(
+                    authorization_code_grant=True,
+                ),
+                callback_urls=[
+                    f"https://{dist.domain_name}"
+                ],
+                logout_urls=[
+                    f"https://{dist.domain_name}",
+                ],
+            ),
+            supported_identity_providers=[
+                cognito.UserPoolClientIdentityProvider.COGNITO
+            ],
+        )
+
+
+        # DynamoDB (orders)
         table = dynamodb.Table(
             self,
             "OrdersTable",
@@ -62,7 +129,7 @@ class Stack(CdkStack):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
-        # 3) Lambda  — one function handles GET and POST
+        # Lambda  — one function handles GET and POST
         handler = _lambda.Function(
             self,
             "OrderHandler",
@@ -77,7 +144,7 @@ class Stack(CdkStack):
         )
         table.grant_read_write_data(handler)
 
-        # 4) API Gateway (REST) 
+        # API Gateway (REST) 
         api = apigw.RestApi(
             self,
             "OrderApi",
@@ -90,14 +157,27 @@ class Stack(CdkStack):
             ),
         )
 
+        # Cognito auth for API Access
+        authorizer = apigw.CognitoUserPoolsAuthorizer(
+            self,
+            "ApiAuth",
+            cognito_user_pools=[user_pool],
+        )
+
         order = api.root.add_resource("order")
         integration = apigw.LambdaIntegration(handler)
-        order.add_method("POST", integration) # POST /order
-        order.add_method("GET", integration) # GET /order
+        order.add_method("POST", integration,
+                         authorization_type=apigw.AuthorizationType.COGNITO,
+                         authorizer=authorizer) # POST /order
+        order.add_method("GET", integration,
+                         authorization_type=apigw.AuthorizationType.COGNITO,
+                         authorizer=authorizer) # GET /order
         order_by_id = order.add_resource("{id}") # GET /order/{id}
-        order_by_id.add_method("GET", integration)
+        order_by_id.add_method("GET", integration,
+                         authorization_type=apigw.AuthorizationType.COGNITO,
+                         authorizer=authorizer)
 
-        # 5) Deploy static site assets from ./web
+        # Store static web files into S3
         deploy_site = s3deploy.BucketDeployment(
             self,
             "OrderFrontendDeplotment",
@@ -108,9 +188,17 @@ class Stack(CdkStack):
             retain_on_delete=False,
         )
 
-        # 6) Write config.json with the real API URL at deploy time
+        # Write config.json with the real API URL at deploy time & user credentials
         config_key = "config.json"
-        config_body = f'{{"apiBase":"{api.url}order"}}'  
+        config_body = (
+            '{'
+            f'"apiBase":"{api.url}order",'
+            f'"region":"us-east-1",'
+            f'"userPoolId":"{user_pool.user_pool_id}",'
+            f'"userPoolClientId":"{user_pool_client.user_pool_client_id}",'
+            f'"cognitoDomain":"https://{project_name}.auth.us-east-1.amazoncognito.com"'
+            '}'
+        )
 
         write_config = cr.AwsCustomResource(
             self, "WriteWebConfig",
@@ -137,9 +225,9 @@ class Stack(CdkStack):
         write_config.node.add_dependency(site_bucket)
         write_config.node.add_dependency(deploy_site)
 
-        # Super Helpful outputs: these will print in the terminal after "cdk deploy" finishes
-        CfnOutput(self, "WebsiteURL", value=site_bucket.bucket_website_url)
-        CfnOutput(self, "ApiUrl", value=api.url)
+        # Outputs
+        CfnOutput(self, "ApiURL", value=api.url)
         CfnOutput(self, "TableName", value=table.table_name)
         CfnOutput(self, "FunctionName", value=handler.function_name)
-        CfnOutput(self, "ConfigUrl", value=f"{site_bucket.bucket_website_url}config.json")
+        CfnOutput(self, "CloudFrontURL", value=f"https://{dist.domain_name}")
+        CfnOutput(self, "ConfigURL", value=f"https://{dist.domain_name}/config.json")

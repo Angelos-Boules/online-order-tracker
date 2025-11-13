@@ -3,74 +3,149 @@
 <head>
   <meta charset="utf-8">
   <title>Orders Demo</title>
+
+  <script>
+    /* ============================================================
+       1) Load config.json (contains API URL + Cognito settings)
+    ============================================================ */
+    let config = null;
+    let tokens = null;
+
+    async function loadConfig() {
+      const r = await fetch("config.json", { cache: "no-store" });
+      config = await r.json();
+    }
+
+    /* ============================================================
+       2) Redirect to Cognito Hosted Login page
+    ============================================================ */
+    function redirectToLogin() {
+      const redirectUri = encodeURIComponent(window.location.origin);
+
+      const loginUrl =
+        `${config.cognitoDomain}/login?` +
+        `client_id=${config.userPoolClientId}` +
+        `&response_type=code` +
+        `&scope=openid+email+profile` +
+        `&redirect_uri=${redirectUri}`;
+
+      window.location.href = loginUrl;
+    }
+
+    /* ============================================================
+       3) Exchange authorization code ?code= for tokens
+    ============================================================ */
+    async function exchangeAuthCodeForTokens(code) {
+      const redirectUri = window.location.origin;
+
+      const body =
+        `grant_type=authorization_code` +
+        `&client_id=${config.userPoolClientId}` +
+        `&code=${code}` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+      const resp = await fetch(`${config.cognitoDomain}/oauth2/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+
+      if (!resp.ok) {
+        console.error("Token exchange failed", await resp.text());
+        redirectToLogin();
+        return;
+      }
+
+      tokens = await resp.json();
+      localStorage.setItem("cognito_tokens", JSON.stringify(tokens));
+
+      // Remove ?code= from URL
+      window.history.replaceState({}, "", window.location.origin);
+    }
+
+    /* ============================================================
+       4) Ensure user is authenticated before loading app
+    ============================================================ */
+    async function ensureAuthenticated() {
+      await loadConfig();
+
+      // Already logged in?
+      const saved = localStorage.getItem("cognito_tokens");
+      if (saved) {
+        tokens = JSON.parse(saved);
+        return;
+      }
+
+      // Do we have a ?code from Cognito redirect?
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("code")) {
+        await exchangeAuthCodeForTokens(params.get("code"));
+        return;
+      }
+
+      // No login → redirect
+      redirectToLogin();
+    }
+
+    // Authenticate BEFORE page renders
+    ensureAuthenticated();
+  </script>
 </head>
 
 <body>
 
   <h1>Orders Demo</h1>
 
-  <!-- ================= CREATE ORDER ================= -->
+  <!-- ============================================================
+       CREATE ORDER
+  ============================================================ -->
   <h2>Create Order</h2>
   <form id="createForm">
     <div>
-      <label>
-        Name:
-        <input name="name" required>
-      </label>
+      <label>Name: <input name="name" required></label>
     </div>
     <div>
-      <label>
-        Product:
-        <input name="product" required>
-      </label>
+      <label>Product: <input name="product" required></label>
     </div>
     <div>
-      <label>
-        Email:
-        <input name="email">
-      </label>
+      <label>Email: <input name="email"></label>
     </div>
     <button type="submit" id="createBtn">Create</button>
   </form>
   <p id="createMsg"></p>
 
-  <!-- ================= LIST ORDERS ================= -->
+  <!-- ============================================================
+       LIST ORDERS
+  ============================================================ -->
   <h2>List Orders</h2>
   <button id="listBtn">List Orders</button>
   <div id="listResults"></div>
 
-  <!-- ================= GET ONE ORDER ================= -->
+  <!-- ============================================================
+       GET ORDER BY ID
+  ============================================================ -->
   <h2>Get Order by ID</h2>
   <form id="getOneForm">
     <div>
-      <label>
-        Order ID:
-        <input name="orderId" required>
-      </label>
+      <label>Order ID: <input name="orderId" required></label>
     </div>
     <button type="submit" id="getOneBtn">Get Order</button>
   </form>
   <div id="oneResult"></div>
 
-  <!-- ================= SCRIPT ================= -->
+  <!-- ============================================================
+       MAIN SCRIPT
+  ============================================================ -->
   <script>
-    let API = null;  // full /prod/order URL from config.json
+    let API = null;
 
-    const createBtn    = document.getElementById("createBtn");
-    const createMsg    = document.getElementById("createMsg");
-    const listBtn      = document.getElementById("listBtn");
-    const listResults  = document.getElementById("listResults");
-    const oneResult    = document.getElementById("oneResult");
-
-    // --- Load API base from config.json (written by CDK) ---
-    async function loadConfig() {
+    // Load API URL from config.json
+    async function loadConfigFile() {
       const r = await fetch("config.json", { cache: "no-store" });
-      if (!r.ok) throw new Error("Failed to load config.json (HTTP " + r.status + ")");
       const cfg = await r.json();
-      API = (cfg.apiBase || "").trim();   // should already end with /prod/order
+      API = (cfg.apiBase || "").trim();
     }
 
-    // --- Helpers for rendering (no CSS, simple tables) ---
     function extractValue(field) {
       return field ? (field.S || field.N || "") : "";
     }
@@ -80,19 +155,20 @@
         return "<p>(no orders yet)</p>";
       }
 
-      let html =
-        "<table border='1' cellpadding='4' cellspacing='0'>" +
-        "<tr><th>Order ID</th><th>Name</th><th>Product</th><th>Email</th><th>Created At</th></tr>";
+      let html = `
+        <table border="1" cellpadding="4" cellspacing="0">
+          <tr><th>Order ID</th><th>Name</th><th>Product</th><th>Email</th><th>Created At</th></tr>
+      `;
 
       for (const o of items) {
-        html +=
-          "<tr>" +
-          "<td>" + extractValue(o.orderId) + "</td>" +
-          "<td>" + extractValue(o.name) + "</td>" +
-          "<td>" + extractValue(o.product) + "</td>" +
-          "<td>" + extractValue(o.email) + "</td>" +
-          "<td>" + extractValue(o.createdAt) + "</td>" +
-          "</tr>";
+        html += `
+          <tr>
+            <td>${extractValue(o.orderId)}</td>
+            <td>${extractValue(o.name)}</td>
+            <td>${extractValue(o.product)}</td>
+            <td>${extractValue(o.email)}</td>
+            <td>${extractValue(o.createdAt)}</td>
+          </tr>`;
       }
 
       html += "</table>";
@@ -103,26 +179,32 @@
       if (!item) return "<p>(not found)</p>";
 
       const fields = ["orderId", "name", "product", "email", "createdAt", "ttl"];
-      let html =
-        "<table border='1' cellpadding='4' cellspacing='0'>" +
-        "<tr><th>Field</th><th>Value</th></tr>";
+      let html = `
+        <table border="1" cellpadding="4" cellspacing="0">
+          <tr><th>Field</th><th>Value</th></tr>
+      `;
 
       for (const k of fields) {
         if (item[k]) {
-          html +=
-            "<tr><td>" + k + "</td><td>" + extractValue(item[k]) + "</td></tr>";
+          html += `<tr><td>${k}</td><td>${extractValue(item[k])}</td></tr>`;
         }
       }
-
       html += "</table>";
       return html;
     }
 
-    // --- Actions ---
+    /* ============================================================
+       API CALLS (INLINE AUTH HEADER)
+    ============================================================ */
+
     async function listOrders() {
       listResults.textContent = "Loading...";
+      const idToken = JSON.parse(localStorage.getItem("cognito_tokens") || "{}").id_token;
+
       try {
-        const r = await fetch(API); // GET /prod/order
+        const r = await fetch(API, {
+          headers: { "Authorization": "Bearer " + idToken }
+        });
         if (!r.ok) throw new Error("HTTP " + r.status);
         const j = await r.json();
         listResults.innerHTML = renderOrderTable(j.orders || []);
@@ -133,13 +215,19 @@
 
     async function getOrderById(orderId) {
       oneResult.textContent = "Loading...";
+      const idToken = JSON.parse(localStorage.getItem("cognito_tokens") || "{}").id_token;
+
       try {
-        const r = await fetch(API + "/" + encodeURIComponent(orderId)); // GET /prod/order/{id}
+        const r = await fetch(API + "/" + encodeURIComponent(orderId), {
+          headers: { "Authorization": "Bearer " + idToken }
+        });
+
         if (r.status === 404) {
           oneResult.innerHTML = renderSingleOrder(null);
           return;
         }
         if (!r.ok) throw new Error("HTTP " + r.status);
+
         const j = await r.json();
         oneResult.innerHTML = renderSingleOrder(j.order || null);
       } catch (e) {
@@ -147,13 +235,14 @@
       }
     }
 
-    // --- Events ---
     document.getElementById("createForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       if (!API) {
         createMsg.textContent = "API not ready yet.";
         return;
       }
+
+      const idToken = JSON.parse(localStorage.getItem("cognito_tokens") || "{}").id_token;
 
       const data = Object.fromEntries(new FormData(e.target).entries());
       createMsg.textContent = "";
@@ -162,7 +251,10 @@
       try {
         const r = await fetch(API, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + idToken
+          },
           body: JSON.stringify(data),
         });
 
@@ -188,7 +280,7 @@
       }
     });
 
-    listBtn.addEventListener("click", listOrders);
+    document.getElementById("listBtn").addEventListener("click", listOrders);
 
     document.getElementById("getOneForm").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -197,14 +289,11 @@
         return;
       }
       const orderId = new FormData(e.target).get("orderId");
-      if (!orderId) return;
       await getOrderById(orderId);
     });
 
-    loadConfig().catch(e => {
-      createMsg.textContent = "Failed to load config.json: " + e;
-    });
+    // Load config.json at startup
+    loadConfigFile();
   </script>
-
 </body>
 </html>
