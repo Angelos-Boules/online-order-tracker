@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Orders Demo</title>
+</head>
+
+<body>
+
+  <h1>Orders Demo</h1>
+
+  <!-- ================= CREATE ORDER ================= -->
+  <h2>Create Order</h2>
+  <form id="createForm">
+    <div>
+      <label>
+        Name:
+        <input name="name" required>
+      </label>
+    </div>
+    <div>
+      <label>
+        Product:
+        <input name="product" required>
+      </label>
+    </div>
+    <div>
+      <label>
+        Email:
+        <input name="email">
+      </label>
+    </div>
+    <button type="submit" id="createBtn">Create</button>
+  </form>
+  <p id="createMsg"></p>
+
+  <!-- ================= LIST ORDERS ================= -->
+  <h2>List Orders</h2>
+  <button id="listBtn">List Orders</button>
+  <div id="listResults"></div>
+
+  <!-- ================= GET ONE ORDER ================= -->
+  <h2>Get Order by ID</h2>
+  <form id="getOneForm">
+    <div>
+      <label>
+        Order ID:
+        <input name="orderId" required>
+      </label>
+    </div>
+    <button type="submit" id="getOneBtn">Get Order</button>
+  </form>
+  <div id="oneResult"></div>
+
+  <!-- ================= SCRIPT ================= -->
+  <script>
+    let API = null;  // full /prod/order URL from config.json
+
+    const createBtn    = document.getElementById("createBtn");
+    const createMsg    = document.getElementById("createMsg");
+    const listBtn      = document.getElementById("listBtn");
+    const listResults  = document.getElementById("listResults");
+    const oneResult    = document.getElementById("oneResult");
+
+    // --- Load API base from config.json (written by CDK) ---
+    async function loadConfig() {
+      const r = await fetch("config.json", { cache: "no-store" });
+      if (!r.ok) throw new Error("Failed to load config.json (HTTP " + r.status + ")");
+      const cfg = await r.json();
+      API = (cfg.apiBase || "").trim();   // should already end with /prod/order
+    }
+
+    // --- Helpers for rendering (no CSS, simple tables) ---
+    function extractValue(field) {
+      return field ? (field.S || field.N || "") : "";
+    }
+
+    function renderOrderTable(items) {
+      if (!Array.isArray(items) || items.length === 0) {
+        return "<p>(no orders yet)</p>";
+      }
+
+      let html =
+        "<table border='1' cellpadding='4' cellspacing='0'>" +
+        "<tr><th>Order ID</th><th>Name</th><th>Product</th><th>Email</th><th>Created At</th></tr>";
+
+      for (const o of items) {
+        html +=
+          "<tr>" +
+          "<td>" + extractValue(o.orderId) + "</td>" +
+          "<td>" + extractValue(o.name) + "</td>" +
+          "<td>" + extractValue(o.product) + "</td>" +
+          "<td>" + extractValue(o.email) + "</td>" +
+          "<td>" + extractValue(o.createdAt) + "</td>" +
+          "</tr>";
+      }
+
+      html += "</table>";
+      return html;
+    }
+
+    function renderSingleOrder(item) {
+      if (!item) return "<p>(not found)</p>";
+
+      const fields = ["orderId", "name", "product", "email", "createdAt", "ttl"];
+      let html =
+        "<table border='1' cellpadding='4' cellspacing='0'>" +
+        "<tr><th>Field</th><th>Value</th></tr>";
+
+      for (const k of fields) {
+        if (item[k]) {
+          html +=
+            "<tr><td>" + k + "</td><td>" + extractValue(item[k]) + "</td></tr>";
+        }
+      }
+
+      html += "</table>";
+      return html;
+    }
+
+    // --- Actions ---
+    async function listOrders() {
+      listResults.textContent = "Loading...";
+      try {
+        const r = await fetch(API); // GET /prod/order
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const j = await r.json();
+        listResults.innerHTML = renderOrderTable(j.orders || []);
+      } catch (e) {
+        listResults.textContent = "Error listing orders: " + e;
+      }
+    }
+
+    async function getOrderById(orderId) {
+      oneResult.textContent = "Loading...";
+      try {
+        const r = await fetch(API + "/" + encodeURIComponent(orderId)); // GET /prod/order/{id}
+        if (r.status === 404) {
+          oneResult.innerHTML = renderSingleOrder(null);
+          return;
+        }
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const j = await r.json();
+        oneResult.innerHTML = renderSingleOrder(j.order || null);
+      } catch (e) {
+        oneResult.textContent = "Error fetching order: " + e;
+      }
+    }
+
+    // --- Events ---
+    document.getElementById("createForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!API) {
+        createMsg.textContent = "API not ready yet.";
+        return;
+      }
+
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      createMsg.textContent = "";
+      createBtn.disabled = true;
+
+      try {
+        const r = await fetch(API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+
+        let orderId = "";
+        try {
+          const text = await r.text();
+          const parsed = JSON.parse(text || "{}");
+          orderId = parsed.orderId || "";
+        } catch {}
+
+        if (!r.ok) {
+          createMsg.textContent = "Create failed.";
+        } else {
+          createMsg.textContent =
+            "Order created successfully" +
+            (orderId ? " (id: " + orderId + ")" : "");
+          e.target.reset();
+        }
+      } catch (err) {
+        createMsg.textContent = "Create failed: " + err;
+      } finally {
+        createBtn.disabled = false;
+      }
+    });
+
+    listBtn.addEventListener("click", listOrders);
+
+    document.getElementById("getOneForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!API) {
+        oneResult.textContent = "API not ready yet.";
+        return;
+      }
+      const orderId = new FormData(e.target).get("orderId");
+      if (!orderId) return;
+      await getOrderById(orderId);
+    });
+
+    loadConfig().catch(e => {
+      createMsg.textContent = "Failed to load config.json: " + e;
+    });
+  </script>
+
+</body>
+</html>

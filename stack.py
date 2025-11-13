@@ -32,7 +32,7 @@ class Stack(CdkStack):
     """
 
     # Must change this - this will be the prefix to all allocated AWS resources for the project #
-    PROJECT_NAME = "online-order-tracking"
+    PROJECT_NAME = "OrderTrackery"
     ###############################################################################################
 
     def __init__(self, scope: Construct, construct_id: str, *, project_name: str = PROJECT_NAME, **kwargs) -> None:
@@ -41,8 +41,9 @@ class Stack(CdkStack):
         # 1) S3 static website 
         site_bucket = s3.Bucket(
             self,
-            "FrontendHostingBucket",
-            website_index_document="index.html", # this was my temp frontend
+            "OrderTrackerFrontend",
+            bucket_name=f"{project_name}-frontend",
+            website_index_document="index.html",
             public_read_access=True,  
             block_public_access=s3.BlockPublicAccess.BLOCK_ACLS,
             auto_delete_objects=True,
@@ -53,7 +54,7 @@ class Stack(CdkStack):
         table = dynamodb.Table(
             self,
             "OrdersTable",
-            table_name=f"{project_name}-orders",
+            table_name=f"{project_name}-orders-db",
             partition_key=dynamodb.Attribute(name="orderId", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl",
@@ -79,7 +80,7 @@ class Stack(CdkStack):
         # 4) API Gateway (REST) 
         api = apigw.RestApi(
             self,
-            "Api",
+            "OrderApi",
             rest_api_name=f"{project_name}-api",
             deploy_options=apigw.StageOptions(stage_name="prod"),
             default_cors_preflight_options=apigw.CorsOptions(
@@ -99,7 +100,7 @@ class Stack(CdkStack):
         # 5) Deploy static site assets from ./web
         deploy_site = s3deploy.BucketDeployment(
             self,
-            "DeployWebsite",
+            "OrderFrontendDeplotment",
             destination_bucket=site_bucket,
             sources=[s3deploy.Source.asset("web")],
             destination_key_prefix="",

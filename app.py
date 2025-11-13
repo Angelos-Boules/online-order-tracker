@@ -8,5 +8,5 @@ env = cdk.Environment(
     account=os.environ.get("CDK_DEFAULT_ACCOUNT"),
     region=os.environ.get("CDK_DEFAULT_REGION", "us-east-1"),
 )
-Stack(app, "Stack", env=env, project_name="online-order-tracking")
+Stack(app, "OrderTrackerStack", env=env, project_name="OrderTracker")
 app.synth()
