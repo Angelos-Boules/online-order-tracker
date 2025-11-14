@@ -89,11 +89,25 @@
 
     // Authenticate BEFORE page renders
     ensureAuthenticated();
+
+    function signOut() {
+      // Remove stored tokens
+      localStorage.removeItem("cognito_tokens");
+
+      // Build Cognito logout URL
+      const logoutUrl =
+        `${config.cognitoDomain}/logout?` +
+        `client_id=${config.userPoolClientId}` +
+        `&logout_uri=${encodeURIComponent(window.location.origin)}`;
+
+      // Redirect to fully sign out from Cognito
+      window.location.href = logoutUrl;
+    }
   </script>
 </head>
 
 <body>
-
+  <button onclick="signOut()">Sign out</button>
   <h1>Orders Demo</h1>
 
   <!-- ============================================================

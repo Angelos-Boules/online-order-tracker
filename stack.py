@@ -128,6 +128,11 @@ class Stack(CdkStack):
             point_in_time_recovery=True,
             removal_policy=RemovalPolicy.DESTROY,
         )
+        table.add_global_secondary_index(
+            index_name="UserOrdersIndex",
+            partition_key=dynamodb.Attribute(name="userId", type=dynamodb.AttributeType.STRING),
+            projection_type=dynamodb.ProjectionType.ALL
+        )
 
         # Lambda  — one function handles GET and POST
         handler = _lambda.Function(
