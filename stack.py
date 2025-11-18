@@ -20,22 +20,7 @@ from aws_cdk import (
 
 
 class Stack(CdkStack):
-    """
-    Core services stack:
-      - S3 static website bucket 
-      - DynamoDB table 
-      - ONE Lambda (Python 3.12) that handles POST and GET on /order
-      - API Gateway (REST) 
-      - Static site auto-deployed AND gets a config.json with the real API URL
-
-    NOTE:
-      - Lambda code is expected in ./lambda_code/order_handler.py
-      - index.html lives in ./web/index.html
-      - index.html fetches ./config.json to learn the API URL
-    """
-
     PROJECT_NAME = "order-tracker"
-    ###############################################################################################
 
     def __init__(self, scope: Construct, construct_id: str, *, project_name: str = PROJECT_NAME, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -187,7 +172,7 @@ class Stack(CdkStack):
             self,
             "OrderFrontendDeplotment",
             destination_bucket=site_bucket,
-            sources=[s3deploy.Source.asset("web")],
+            sources=[s3deploy.Source.asset("web/dist")],
             destination_key_prefix="",
             prune=False,
             retain_on_delete=False,
