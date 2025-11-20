@@ -1,6 +1,6 @@
 import { getDynamicConfig } from "./config";
 
-let awsJWT = none;
+let awsJWT = null;
 
 export async function checkAuth() {
     const config = await getDynamicConfig();

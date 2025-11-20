@@ -172,7 +172,7 @@ class Stack(CdkStack):
             self,
             "OrderFrontendDeplotment",
             destination_bucket=site_bucket,
-            sources=[s3deploy.Source.asset("web/dist")],
+            sources=[s3deploy.Source.asset("./web/dist")],
             destination_key_prefix="",
             prune=False,
             retain_on_delete=False,
