@@ -16,6 +16,7 @@ from aws_cdk import (
     aws_cognito as cognito,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as cforigins,
+    aws_cloudwatch as cloudwatch,
 )
 
 
@@ -214,6 +215,18 @@ class Stack(CdkStack):
         # Ensure the bucket and site content exist before writing config.json
         write_config.node.add_dependency(site_bucket)
         write_config.node.add_dependency(deploy_site)
+
+        # Metrics Cloudwatch dashboard setup
+        dashboard = cloudwatch.Dashboard(self, "OrderTrackerDashboard",
+                                         dashboard_name=f"{project_name}-dashboard")
+
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(title="Lambda Order Handler Invocations", left=[handler.metric_invocations()]),
+            cloudwatch.GraphWidget(title="Lambda Order Handler Duraction", left=[handler.metric_duration()]),
+            cloudwatch.GraphWidget(title="Lambda Order Handler Errors", left=[handler.metric_errors()]),
+            cloudwatch.GraphWidget(title="API Gateway Server Errors", left=[api.metric_server_error()]),
+            cloudwatch.GraphWidget(title="API Gateway Client Errorss", left=[api.metric_client_error()])
+        )
 
         # Outputs
         CfnOutput(self, "ApiURL", value=api.url)
