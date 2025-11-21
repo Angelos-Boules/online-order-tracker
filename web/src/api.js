@@ -33,10 +33,19 @@ export async function listOrders() {
         headers: { Authorization: 'Bearer ' + token },
     });
 
+    let body = await res.text();
+    let data = {};
+    try {
+        data = JSON.parse(body || '{}')
+    } catch {
+        data = {};
+    }
+
     if (!res.ok) {
-        throw new Error('HTTP: ' + res.status);
+        throw { error: data.error };
     } 
-    return res.json();
+
+    return data;
 }
 
 export async function getOrderById(id) {
@@ -47,11 +56,19 @@ export async function getOrderById(id) {
         headers: { Authorization: 'Bearer ' + token},
     });
 
+    let body = await res.text();
+    let data = {};
+    try {
+        data = JSON.parse(body || '{}');
+    } catch {
+        data = {};
+    }
+
     if (res.status === 404) {
         return {error: 'Order not found'};
     }
     if (!res.ok) {
-        throw new Error('HTTP: ' + res.status);
+        return { error: data.error }
     }
-    return res.json();
+    return data;
 }
