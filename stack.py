@@ -128,10 +128,21 @@ class Stack(CdkStack):
             runtime=_lambda.Runtime.PYTHON_3_12,
             code=_lambda.Code.from_asset("lambda_code"), # The lambda code resides in a folder named "lambda_code"
             handler="order_handler.handler",
-            environment={"TABLE_NAME": table.table_name},
+            environment={
+                "TABLE_NAME": table.table_name,
+                "SENDER_EMAIL": "buy-n-track@outlook.com" # SENDER_EMAIL verified and used by SES to send order confirmation emails
+            },
             memory_size=128,                                
             timeout=Duration.seconds(5),                   
             log_retention=logs.RetentionDays.ONE_WEEK,     
+        )
+
+        # Allows Lambda to send emails using SES
+        handler.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["ses:SendEmail", "ses:SendRawEmail"],
+                resources=["*"],
+            )
         )
         table.grant_read_write_data(handler)
 

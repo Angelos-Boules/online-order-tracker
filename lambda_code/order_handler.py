@@ -3,6 +3,8 @@ from boto3.dynamodb.conditions import Key
 
 TABLE_NAME = os.environ["TABLE_NAME"]
 ddb = boto3.client("dynamodb")
+SENDER_EMAIL = os.environ["SENDER_EMAIL"]
+ses = boto3.client("ses")
 
 CORS = {
     "Access-Control-Allow-Origin": "*",
@@ -76,6 +78,29 @@ def create_order(event, uid):
     try:
         ddb.put_item(TableName=TABLE_NAME, Item=item)
         print(f"Order {order_id} created and stored successfully")
+
+        try:
+            ses.send_email(
+                Source=SENDER_EMAIL,
+                Destination={"ToAddresses": [item["email"]["S"]]},
+                Message={
+                    "Subject": {"Data": f"Order Received: '{item['product']['S']}'"},
+                    "Body": {
+                        "Text": {
+                            "Data": (
+                                f"Hello {item['name']['S']},\n\n"
+                                f"We received your order for '{item['product']['S']}'.\n"
+                                f"Order ID: {order_id}\n\n"
+                                "Thank you for using the Buy-N-Track!"
+                            )
+                        }
+                    },
+                },
+            )
+            print(f"SES: Email sent to {item['email']['S']}")
+        except Exception as e:
+            print("SES email error:", e)
+
     except Exception as e:
         print("DynamoDB error:", e)
         return {"statusCode": 500, "headers": CORS, "body": json.dumps({"error": "Failed to persist order"})}
