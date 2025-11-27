@@ -126,7 +126,7 @@ class Stack(CdkStack):
             "OrderHandler",
             function_name=f"{project_name}-order-handler",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            code=_lambda.Code.from_asset("lambda_code"), # The lambda code resides in a folder named "lambda_code"
+            code=_lambda.Code.from_asset("lambda_code"), # The lambda code from "lambda_code" folder
             handler="order_handler.handler",
             environment={
                 "TABLE_NAME": table.table_name,
