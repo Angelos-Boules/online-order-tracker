@@ -235,12 +235,12 @@ class Stack(CdkStack):
             cloudwatch.GraphWidget(title="Lambda Order Handler Invocations", left=[handler.metric_invocations()]),
             cloudwatch.GraphWidget(title="Lambda Order Handler Duraction", left=[handler.metric_duration()]),
             cloudwatch.GraphWidget(title="Lambda Order Handler Errors", left=[handler.metric_errors()]),
-            cloudwatch.GraphWidget(title="API Gateway Server Errors", left=[api.metric_server_error()]),
-            cloudwatch.GraphWidget(title="API Gateway Client Errorss", left=[api.metric_client_error()])
+            cloudwatch.GraphWidget(title="API Gateway Server (5XX) Errors", left=[api.metric_server_error()]),
+            cloudwatch.GraphWidget(title="API Gateway Client (4XX) Errors", left=[api.metric_client_error()])
         )
 
         # Outputs
-        CfnOutput(self, "ApiURL", value=api.url)
+        CfnOutput(self, "ApiEndpoint", value=api.url)
         CfnOutput(self, "TableName", value=table.table_name)
         CfnOutput(self, "FunctionName", value=handler.function_name)
         CfnOutput(self, "CloudFrontURL", value=f"https://{dist.domain_name}")
