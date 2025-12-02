@@ -233,7 +233,7 @@ class Stack(CdkStack):
 
         dashboard.add_widgets(
             cloudwatch.GraphWidget(title="Lambda Order Handler Invocations", left=[handler.metric_invocations()]),
-            cloudwatch.GraphWidget(title="Lambda Order Handler Duraction", left=[handler.metric_duration()]),
+            cloudwatch.GraphWidget(title="Lambda Order Handler Duration", left=[handler.metric_duration()]),
             cloudwatch.GraphWidget(title="Lambda Order Handler Errors", left=[handler.metric_errors()]),
             cloudwatch.GraphWidget(title="API Gateway Server (5XX) Errors", left=[api.metric_server_error()]),
             cloudwatch.GraphWidget(title="API Gateway Client (4XX) Errors", left=[api.metric_client_error()])
