@@ -1,7 +1,7 @@
 # Buy-N-Track Order Tracking Simulator
 
-To run:
-  cdk bootstrap (only need to do once)
+To run: \n
+  cdk bootstrap (only need to do once) \n
   cdk deploy
 
 To destroy/clean up resources:
